@@ -32,7 +32,11 @@ def save_hsv_values(values):
 hsv_values = load_hsv_values()
 
 # Create a window for trackbars to tune HSV values
+
 cv2.namedWindow("Trackbars")
+cv2.resizeWindow("Trackbars", 500, 400)
+
+
 cv2.createTrackbar("Lower-H", "Trackbars", hsv_values["Lower-H"], 179, nothing)
 cv2.createTrackbar("Lower-S", "Trackbars", hsv_values["Lower-S"], 255, nothing)
 cv2.createTrackbar("Lower-V", "Trackbars", hsv_values["Lower-V"], 255, nothing)
@@ -40,12 +44,17 @@ cv2.createTrackbar("Upper-H", "Trackbars", hsv_values["Upper-H"], 179, nothing)
 cv2.createTrackbar("Upper-S", "Trackbars", hsv_values["Upper-S"], 255, nothing)
 cv2.createTrackbar("Upper-V", "Trackbars", hsv_values["Upper-V"], 255, nothing)
 
+# Feature toggles
+cv2.createTrackbar("CLAHE", "Trackbars", 0, 1, nothing)
+cv2.createTrackbar("Gaussian Blur", "Trackbars", 0, 1, nothing)
+cv2.createTrackbar("Gaussian Kernel", "Trackbars", 5, 20, nothing)
+cv2.createTrackbar("Top-hat", "Trackbars", 0, 1, nothing)
+cv2.createTrackbar("Black-hat", "Trackbars", 0, 1, nothing)
+
 # Known parameters (adjust based on your object and camera setup)
 FOCAL_LENGTH = 720  # Approximate focal length in pixels (calibrate for accuracy)
 REAL_HEIGHT = 5.0   # Real-world height of the object in cm (e.g., height of the pen)
 
-# Initialize the canvas for drawing
-canvas = None
 
 # Start capturing video from the webcam
 cap = cv2.VideoCapture(0)
@@ -54,7 +63,7 @@ cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
 # Initialize variables to store the pen's previous position
 prev_x, prev_y = None, None
-
+canvas = None
 # Variable to track if a circle-ish shape is detected
 circle_detected = False
 circle_frames_count = 0
@@ -68,6 +77,21 @@ save_dir = r"C:\Users\pops\Desktop\openCV_Advanced\canvas+pen+save\images"
 # Ensure the directory exists
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
+
+# Function to apply Gaussian Blur
+def apply_gaussian_blur(image, kernel_size=5):
+    kernel_size = max(3, kernel_size // 2 * 2 + 1)  # Ensure kernel size is odd
+    return cv2.GaussianBlur(image, (kernel_size, kernel_size), 0)
+
+# Function to apply Top-hat transformation
+def apply_top_hat(image):
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    return cv2.morphologyEx(image, cv2.MORPH_TOPHAT, kernel)
+
+# Function to apply Black-hat transformation
+def apply_black_hat(image):
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    return cv2.morphologyEx(image, cv2.MORPH_BLACKHAT, kernel)
 
 # Depth calculation 
 def calculate_depth(focal_length, real_height, pixel_height):
@@ -110,17 +134,6 @@ try:
         if not ret:
             break
 
-        frame = cv2.flip(frame, 1)  # Flip the frame horizontally
-        if canvas is None:
-            canvas = np.zeros_like(frame)  # Initialize a blank canvas with the same size as the frame
-        # Apply CLAHE to normalize lighting
-        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        lab[:, :, 0] = clahe.apply(lab[:, :, 0])
-        frame = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)  # Convert back to BGR
-
-        # Convert to HSV for color detection
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         # Get the HSV range values from the trackbars
         lower_h = cv2.getTrackbarPos("Lower-H", "Trackbars")
         lower_s = cv2.getTrackbarPos("Lower-S", "Trackbars")
@@ -128,6 +141,40 @@ try:
         upper_h = cv2.getTrackbarPos("Upper-H", "Trackbars")
         upper_s = cv2.getTrackbarPos("Upper-S", "Trackbars")
         upper_v = cv2.getTrackbarPos("Upper-V", "Trackbars")
+
+        clahe_enabled = cv2.getTrackbarPos("CLAHE", "Trackbars")
+        gaussian_blur_enabled = cv2.getTrackbarPos("Gaussian Blur", "Trackbars")
+        gaussian_kernel_size = cv2.getTrackbarPos("Gaussian Kernel", "Trackbars")
+        top_hat = cv2.getTrackbarPos("Top-hat", "Trackbars")
+        black_hat = cv2.getTrackbarPos("Black-hat", "Trackbars")
+
+        frame = cv2.flip(frame, 1)  # Flip the frame horizontally
+        if canvas is None:
+            canvas = np.zeros_like(frame)  # Initialize a blank canvas with the same size as the frame
+        
+          # Apply CLAHE
+        if clahe_enabled:
+            lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            lab[:, :, 0] = clahe.apply(lab[:, :, 0])
+            frame = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+        # Apply Gaussian Blur
+        if gaussian_blur_enabled:
+            frame = apply_gaussian_blur(frame, gaussian_kernel_size)
+
+        # Apply Morphological Transformations
+        if top_hat:
+            frame = apply_top_hat(frame)
+        if black_hat:
+            frame = apply_black_hat(frame)
+
+      # Convert to HSV
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        lower_bound = np.array([lower_h, lower_s, lower_v])
+        upper_bound = np.array([upper_h, upper_s, upper_v])
+        mask = cv2.inRange(hsv, lower_bound, upper_bound)
+
 
         # Define the lower and upper bounds for the pen's color
         lower_bound = np.array([lower_h, lower_s, lower_v])

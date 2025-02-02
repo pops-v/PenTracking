@@ -1,0 +1,7 @@
+# Dataset configuration for YOLOv8 with two classes: 'reading_glasses' and 'human_face'
+
+train: C:/Users/pops/Desktop/PenDetection/train  # Path to your training folder
+val: C:/Users/pops/Desktop/PenDetection/validation  # Path to your validation folder
+
+nc: 1   # Number of classes
+names: ['pen']  # Names of the two classes
